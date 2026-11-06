@@ -206,6 +206,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
   <button type="button" id="wishBoxBtn" class="boss-only" hidden><svg viewBox="0 0 24 24"><path d="M12 3l2.2 5.2 5.6.5-4.3 3.7 1.3 5.5L12 15l-4.8 2.9 1.3-5.5-4.3-3.7 5.6-.5z"/></svg>소원함</button>
 </nav>
 <div class="mega-ban" id="megaBan" hidden role="status" aria-live="polite"><span class="mi">📢</span><b>소링타로</b><span id="megaText"></span></div>
+<div class="gl-lost" id="sleepMask" hidden><b>새 창에서 열었어요</b><span>이 창은 쉬고 있어요. 새 창을 이용해 주세요.</span><button type="button" id="wakeBtn" class="go" style="margin-top:14px;pointer-events:auto">이 창 다시 열기</button></div>
 <div class="gl-lost" id="glLost" hidden><b>화면을 다시 불러오는 중이에요</b><span>잠시만 기다려 주세요</span></div>
 <div class="live-banner" id="liveBanner" hidden><b>라이브 방송이 시작되었습니다</b><span>달의 전당</span></div>
 
@@ -269,6 +270,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
     <button class="x" type="button" data-close aria-label="닫기">×</button>
     <h2 id="linkTitle">소링카페</h2>
     <p id="linkText" class="muted"></p>
+    <p id="linkUrl" style="user-select:all;-webkit-user-select:all;word-break:break-all;font-size:13px;opacity:.85;margin:6px 0 12px"></p>
     <a class="go" id="linkGo" href="#" style="display:block;text-align:center;text-decoration:none">열기</a>
   </div>
 </div>
@@ -4036,12 +4038,14 @@ const PLACES = [
 ]
 {
   const grid = $('placesGrid');
-  for (const [name, x, z, lx, lz] of PLACES){
-    if (PAGE === 'mini' && ['입구', '기차역', '소링카페', '라이브홀', '1:1 상담소'].includes(name)) continue;
+  const SHOW = PAGE === 'cafe' ? ['타로 라운지', '라이브홀'] : PAGE === 'hall' ? ['타로 라운지', '소링카페']
+    : PAGE === 'mini' ? ['소원연못', '신성한 나무', '달의 전당', '달의 계단', '카드정원'] : ['소원연못', '신성한 나무', '달의 전당', '달의 계단', '기차역', '1:1 상담소', '소링카페', '라이브홀'];
+  for (const name of SHOW){ const [, x, z, lx, lz] = PLACES.find(P => P[0] === name) || [name];
     const b = document.createElement('button'); b.type = 'button';
     const [main, sub] = name.split('\n'); const t = document.createElement('b'); t.style.fontWeight = '400'; t.textContent = main; b.append(t); if (sub){ const sp = document.createElement('span'); sp.textContent = sub; b.append(sp); }
     const pi = PLACES.findIndex(P => P[0] === name);
     b.addEventListener('click', () => { $('placesSheet').hidden = true; if (!me) return;
+      if (name === '타로 라운지'){ openLink('lounge'); return; }
       if (name === '소링카페'){ if (PAGE !== 'cafe') openLink('cafe'); else { me.setTarget(x, z + 4, true); } return; }
       if (name === '라이브홀'){ if (PAGE !== 'hall') openLink('hall'); return; }
       if (!GARDENISH){ openLink('lounge'); return; }
@@ -4062,10 +4066,18 @@ const spawn = PAGE === 'cafe' ? { x: CAFE.x + rnd(-1.5, 1.5), z: CAFE.z - CAFE.R
   : { x: rnd(42.5, 46.5), z: rnd(5.2, 6.6), ry: Math.PI, cy: 0 }; // on the station platform
 // each place is its own site: tapping the café / live hall (or leaving them) shows a link to that site
 let leavingPage = false;
-const SITE = { cafe: ['소링카페', '카페 안으로 들어가요. 새 페이지가 열려요.', () => CONFIG.CAFE_URL], hall: ['라이브홀', '라이브 방송이 열리는 홀로 들어가요. 새 페이지가 열려요.', () => CONFIG.HALL_URL], lounge: ['밤의 타로 라운지', '정원·소원연못·달의 전당이 있는 라운지로 돌아가요.', () => CONFIG.LOUNGE_URL] };
+const SITE = { cafe: ['소링카페', '카페 안으로 들어가요. 새 창에서 열려요.', () => CONFIG.CAFE_URL], hall: ['라이브홀', '라이브 방송이 열리는 홀로 들어가요. 새 창에서 열려요.', () => CONFIG.HALL_URL], lounge: ['밤의 타로 라운지', '정원·소원연못·달의 전당이 있는 라운지예요. 새 창에서 열려요.', () => CONFIG.LOUNGE_URL] };
 function siteUrl(kind){ try { const u = new URL(SITE[kind][2](), location.href), cur = new URL(location.href).searchParams; for (const k of ['host', 'full']) if (cur.has(k)) u.searchParams.set(k, ''); return u.toString().replace(/=(&|$)/g, '$1'); } catch(_) { return SITE[kind][2](); } }
 let linkShownAt = 0;
-function openLink(kind){ if (!SITE[kind]) return; linkShownAt = Date.now(); $('linkTitle').textContent = SITE[kind][0]; $('linkText').textContent = SITE[kind][1]; const a = $('linkGo'); a.href = siteUrl(kind); a.textContent = SITE[kind][0] + ' 열기'; openSheet('linkSheet'); }
+function openLink(kind){ if (!SITE[kind]) return; linkShownAt = Date.now(); $('linkTitle').textContent = SITE[kind][0]; $('linkText').textContent = SITE[kind][1]; const a = $('linkGo'); a.href = siteUrl(kind); a.target = '_blank'; a.rel = 'noopener'; a.textContent = '새 창으로 열기'; $('linkUrl').textContent = a.href; openSheet('linkSheet'); }
+// after opening another site in a new tab, this tab lets go of its graphics, sound and connection so the phone has room for the new one
+function sleepTab(){ if (window.__asleep) return; window.__asleep = window.__leaving = true;
+  try { if (net.sb) net.sb.removeAllChannels(); } catch(_) {}
+  try { if (AU.ctx) AU.ctx.suspend(); document.querySelectorAll('audio').forEach(a => a.pause()); } catch(_) {}
+  try { renderer.forceContextLoss(); } catch(_) {}
+  $('linkSheet').hidden = true; $('sleepMask').hidden = false; }
+$('linkGo').addEventListener('click', () => setTimeout(sleepTab, 300));
+$('wakeBtn').addEventListener('click', () => location.reload());
 function goPage(file){ openLink(file.startsWith('cafe') ? 'cafe' : file.startsWith('hall') ? 'hall' : 'lounge'); }
 let me = null;
 let camYaw = 0, camPitch = .3, camDist = 11;
@@ -5642,7 +5654,7 @@ function frame(){
       if (vis) p.bub.style.transform = `translate(${(v3.x*.5+.5)*w}px,${(-v3.y*.5+.5)*h}px) translate(-50%,-100%)`;
     }
   }
-  requestAnimationFrame(frame);
+  if (!window.__asleep) requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 function prewarm(){ // one draw of the whole place, exactly the way the game draws, with nothing culled or hidden by distance:
