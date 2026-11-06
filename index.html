@@ -4066,17 +4066,18 @@ const spawn = PAGE === 'cafe' ? { x: CAFE.x + rnd(-1.5, 1.5), z: CAFE.z - CAFE.R
   : { x: rnd(42.5, 46.5), z: rnd(5.2, 6.6), ry: Math.PI, cy: 0 }; // on the station platform
 // each place is its own site: tapping the café / live hall (or leaving them) shows a link to that site
 let leavingPage = false;
-const SITE = { cafe: ['소링카페', '카페 안으로 들어가요. 새 창에서 열려요.', () => CONFIG.CAFE_URL], hall: ['라이브홀', '라이브 방송이 열리는 홀로 들어가요. 새 창에서 열려요.', () => CONFIG.HALL_URL], lounge: ['밤의 타로 라운지', '정원·소원연못·달의 전당이 있는 라운지예요. 새 창에서 열려요.', () => CONFIG.LOUNGE_URL] };
+const SITE = { cafe: ['소링카페', '카페 안으로 들어가요.', () => CONFIG.CAFE_URL], hall: ['라이브홀', '라이브 방송이 열리는 홀로 들어가요.', () => CONFIG.HALL_URL], lounge: ['밤의 타로 라운지', '정원·소원연못·달의 전당이 있는 라운지예요.', () => CONFIG.LOUNGE_URL] };
 function siteUrl(kind){ try { const u = new URL(SITE[kind][2](), location.href), cur = new URL(location.href).searchParams; for (const k of ['host', 'full']) if (cur.has(k)) u.searchParams.set(k, ''); return u.toString().replace(/=(&|$)/g, '$1'); } catch(_) { return SITE[kind][2](); } }
 let linkShownAt = 0;
-function openLink(kind){ if (!SITE[kind]) return; linkShownAt = Date.now(); $('linkTitle').textContent = SITE[kind][0]; $('linkText').textContent = SITE[kind][1]; const a = $('linkGo'); a.href = siteUrl(kind); a.target = '_blank'; a.rel = 'noopener'; a.textContent = '새 창으로 열기'; $('linkUrl').textContent = a.href; openSheet('linkSheet'); }
+function openLink(kind){ if (!SITE[kind]) return; linkShownAt = Date.now(); $('linkTitle').textContent = SITE[kind][0]; $('linkText').textContent = SITE[kind][1]; const a = $('linkGo'); a.href = siteUrl(kind); a.removeAttribute('target'); a.textContent = '이동하기'; $('linkUrl').textContent = a.href; openSheet('linkSheet'); }
 // after opening another site in a new tab, this tab lets go of its graphics, sound and connection so the phone has room for the new one
 function sleepTab(){ if (window.__asleep) return; window.__asleep = window.__leaving = true;
   try { if (net.sb) net.sb.removeAllChannels(); } catch(_) {}
   try { if (AU.ctx) AU.ctx.suspend(); document.querySelectorAll('audio').forEach(a => a.pause()); } catch(_) {}
   try { renderer.forceContextLoss(); } catch(_) {}
   $('linkSheet').hidden = true; $('sleepMask').hidden = false; }
-$('linkGo').addEventListener('click', () => setTimeout(sleepTab, 300));
+// same tab: first let go of graphics / sound / connection, then move on, so the next site starts with the phone's memory free
+$('linkGo').addEventListener('click', e => { e.preventDefault(); const href = $('linkGo').href; sleepTab(); $('sleepMask').querySelector('b').textContent = '이동하는 중이에요'; $('sleepMask').querySelector('span').textContent = '잠시만 기다려 주세요'; $('wakeBtn').hidden = true; setTimeout(() => location.href = href, 350); });
 $('wakeBtn').addEventListener('click', () => location.reload());
 function goPage(file){ openLink(file.startsWith('cafe') ? 'cafe' : file.startsWith('hall') ? 'hall' : 'lounge'); }
 let me = null;
