@@ -20,7 +20,7 @@
   color-scheme:dark;
 }
 [hidden]{display:none!important}
-html,body{height:100%;margin:0;background:var(--night);color:var(--ink);overflow:hidden}
+html,body{height:100%;margin:0;background:var(--night);color:var(--ink);overflow:hidden;max-width:100vw;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{font-family:var(--body);font-size:15px;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 #world{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
 #labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
@@ -53,7 +53,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .hud-tl .dot{width:7px;height:7px;border-radius:50%;background:var(--mute);flex:none}
 .hud-tl.live .dot{background:#8be3a6;box-shadow:0 0 8px #8be3a6}
 .hud-tr{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);right:calc(env(safe-area-inset-right,0px) + 12px);display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-@media (max-width:560px){.hud-tr{top:calc(env(safe-area-inset-top,0px) + 58px);left:12px}.hud-tl b{display:none}}
+@media (max-width:560px){.hud-tr{top:calc(env(safe-area-inset-top,0px) + 58px);left:12px}.hud-tl b{display:none}.hud-tl{max-width:calc(100vw - 140px)}}
+#kakaoTop{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);right:calc(env(safe-area-inset-right,0px) + 12px);z-index:5}
+@media (min-width:561px){.hud-tr{top:calc(env(safe-area-inset-top,0px) + 58px)}}
 .pill{border-radius:999px;padding:8px 14px;border:1px solid var(--line);font-size:13.5px;text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .pill.kakao{background:var(--kakao);color:#1b1800;border-color:var(--kakao);font-weight:700}
 .pill svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round}
@@ -270,7 +272,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
     <button class="x" type="button" data-close aria-label="닫기">×</button>
     <h2 id="linkTitle">소링카페</h2>
     <p id="linkText" class="muted"></p>
-    <p id="linkUrl" style="user-select:all;-webkit-user-select:all;word-break:break-all;font-size:13px;opacity:.85;margin:6px 0 12px"></p>
+    <p id="linkUrl" hidden style="user-select:all;-webkit-user-select:all;word-break:break-all;font-size:13px;opacity:.85;margin:6px 0 12px"></p>
     <a class="go" id="linkGo" href="#" style="display:block;text-align:center;text-decoration:none">열기</a>
   </div>
 </div>
@@ -5220,14 +5222,13 @@ function applyState(st){
   hallSign.draw(!!st.open);
   if (!live.isHost && st.hostPid !== (live.state && live.state.hostPid)){ live.state.hostPid = st.hostPid; refreshBoss(); }
   live.state = st;
-  const seatedMe = !!(st.seated && st.seated.id === myUid() && !live.isHost);
-  if (seatedMe && !wasSeated){ openConsult(myUid()); if (live.inHall && me){ me.setTarget(HS.x + 3, HS.z - 1.5, true); me.sitAt(GUEST_SEAT); net.send('sit', { seat: GUEST_SEAT }); net.retrack(); } toast('상담', ' 차례가 됐어요. 앞 의자에 앉았어요. 리딩은 나에게만 보이고 들려요.'); }
-  if (!seatedMe && wasSeated && !live.isHost){ closeConsult(); if (me && me.seat === GUEST_SEAT){ me.setTarget(HS.x + 2, HS.z - 10, true); net.send('move', { x: HS.x + 2, z: HS.z - 10, tp: 1 }); } }
-  wasSeated = seatedMe;
+  const seatedMe = !!(st.seated && st.seated.id === myUid() && !live.isHost), was = wasSeated; wasSeated = seatedMe;
+  if (seatedMe && !was){ openConsult(myUid()); if (live.inHall && me){ me.setTarget(HS.x + 3, HS.z - 1.5, true); me.sitAt(GUEST_SEAT); net.send('sit', { seat: GUEST_SEAT }); net.retrack(); } toast('상담', st.pubChat || st.pubVoice ? ' 차례가 됐어요. 앞 의자에 앉았어요. 이번 상담은 홀에 공개돼요.' : ' 차례가 됐어요. 앞 의자에 앉았어요. 상담 내용은 나에게만 보이고 들려요 (비공개).'); renderChat(); }
+  if (!seatedMe && was && !live.isHost){ closeConsult(); if (me && me.seat === GUEST_SEAT){ me.setTarget(HS.x + 2, HS.z - 10, true); net.send('move', { x: HS.x + 2, z: HS.z - 10, tp: 1 }); } }
   if (!seatedMe && !live.isHost && (st.seated ? st.seated.id : null) !== prevSeat){ live.chat = []; renderChat(); }
   pubListen();
   if (st.cards.phase !== 'open' && st.cards.phase !== 'closed' && st.cards.phase !== 'revealed') live.myPick = null;
-  renderLive();
+  renderChat(); renderLive();
 }
 await __yield();
 /* ---- entering / leaving the hall ---- */
@@ -5348,7 +5349,7 @@ function renderChat(){
   const box = $('chatLog'); if (!box) return; box.textContent = '';
   const st = live.state;
   const spect = !live.isHost && !wasSeated;
-  $('chatTitle').textContent = live.isHost ? (st.seated ? `${st.seated.nick}님과 ${st.pubVoice || st.pubChat ? '공개 ' : '1:1 '}상담` : '상담') : spect ? `${st.seated ? st.seated.nick : ''}님 상담 · 공개` : '방장님과 상담';
+  $('chatTitle').textContent = live.isHost ? (st.seated ? `${st.seated.nick}님과 ${st.pubVoice || st.pubChat ? '공개 ' : '1:1 '}상담` : '상담') : spect ? `${st.seated ? st.seated.nick : ''}님 상담 · 공개` : `방장님과 상담 · ${st.pubChat || st.pubVoice ? '공개' : '비공개'}`;
   for (const m of live.chat){ const p = el('p', m.from === 'host' ? 'from-host' : 'from-guest'); p.append(el('b', '', m.from === 'host' ? '방장' : ((live.isHost || spect) && st.seated ? st.seated.nick : '나')), document.createTextNode(m.text)); box.append(p); }
   box.scrollTop = box.scrollHeight; renderVoice();
 }
@@ -5357,8 +5358,8 @@ function renderVoice(){
   if (live.isHost){ $('micBtn').textContent = live.mic ? '마이크 끄기' : '마이크 켜기';
     const n = [...live.pubPcs.values()].filter(ok).length;
     v.textContent = !live.mic ? '음성 꺼짐 · 텍스트로 진행 중' : st.pubVoice ? `음성 켜짐 · 라이브 홀 모두에게 들려요 (${n + (ok(live.pc) ? 1 : 0)}명 연결)` : ok(live.pc) ? '음성 연결됨 · 상담자에게만 들려요' : '음성 연결 중…'; }
-  else if (!wasSeated) v.textContent = !st.pubVoice ? '상담 내용이 공개돼요 (음성은 상담자에게만 들려요)' : ok(live.ppc) ? '방장님 상담 음성이 들려요 (공개)' : st.mic ? '음성 연결 중…' : '방장님이 마이크를 켜면 음성이 들려요';
-  else v.textContent = ok(live.pc) ? (st.pubVoice ? '방장님 음성 · 홀 전체 공개 상담이에요' : '방장님 음성이 나에게만 들려요') : '방장님이 마이크를 켜면 음성이 들려요';
+  else if (!wasSeated) v.textContent = !st.pubVoice ? '상담 채팅이 공개돼요 (음성은 상담자에게만 들려요)' : ok(live.ppc) ? '방장님 상담 음성이 들려요 (공개)' : st.mic ? '음성 연결 중…' : '방장님이 마이크를 켜면 음성이 들려요';
+  else v.textContent = (st.pubChat ? '채팅이 홀에 공개돼요 · ' : '채팅은 나와 방장님만 봐요 · ') + (ok(live.pc) ? (st.pubVoice ? '음성도 홀 전체에 공개돼요' : '방장님 음성이 나에게만 들려요') : '방장님이 마이크를 켜면 음성이 들려요');
   $('micBtn').hidden = !live.isHost;
 }
 await __yield();
