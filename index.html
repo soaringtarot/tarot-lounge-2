@@ -603,7 +603,9 @@ try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 catch (e) { document.body.insertAdjacentHTML('beforeend','<div class="err">이 기기에서는 3D 화면을 열 수 없어요. 다른 브라우저나 기기로 들어와 주세요.</div>'); throw e; }
 const MOBILE = Math.min(innerWidth, innerHeight) < 600 || /Android|iPhone|iPad/i.test(navigator.userAgent);
 const LITEG = MOBILE && GARDENISH;
-const LITEH = MOBILE && PAGE === 'hall';   // phone live hall: up to 100 cats — only the nearest are drawn in full, far ones as simple shapes, fewer name tags   // phone lounge: the biggest scene — fewer blades/leaves, smaller textures, sharpness 1x, small far things hidden sooner
+const LITEH = MOBILE && PAGE === 'hall';
+const LITEC = MOBILE && PAGE === 'cafe';   // phone café: same cat / name-tag thinning as the hall, sharpness 1x, smaller textures
+const LITEP = LITEH || LITEC;   // phone live hall: up to 100 cats — only the nearest are drawn in full, far ones as simple shapes, fewer name tags   // phone lounge: the biggest scene — fewer blades/leaves, smaller textures, sharpness 1x, small far things hidden sooner
 // phones can drop the GL context when memory runs short: keep it recoverable and tell the visitor instead of leaving a black screen
 function glDown(){ if (window.__leaving) return; const n = document.getElementById('glLost'); if (!n || !n.hidden) return; n.hidden = false; setTimeout(() => { if (!window.__leaving && renderer.getContext().isContextLost()) location.reload(); }, 6000); }
 canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); glDown(); }, false);
@@ -622,7 +624,7 @@ const QUALITY = {
   high:   { dpr: 2,    bloom: true,  mirror: .6,  shadow: 2048 },
   medium: { dpr: 1.5,  bloom: true,  mirror: .32, shadow: 1024 },
   low:    { dpr: 1,    bloom: false, mirror: 0,   shadow: 0 },
-  phone:  { dpr: LITEG || LITEH ? 1 : 1.25, bloom: true,  mirror: 0,   shadow: 0 }   // auto on phones: keeps the glow, drops the costly reflection and shadow passes
+  phone:  { dpr: LITEG || LITEP ? 1 : 1.25, bloom: true,  mirror: 0,   shadow: 0 }   // auto on phones: keeps the glow, drops the costly reflection and shadow passes
 };
 const prefs = Object.assign({ season: 'auto', time: 'auto', weather: 'auto', quality: 'auto' }, store.get('tl3-scene') || {});
 const qualityName = () => prefs.quality === 'auto' ? (MOBILE ? 'phone' : 'high') : prefs.quality;
@@ -715,7 +717,7 @@ function labelSprite(text, w = 2.8){
 await __yield();
 /* ---------------- textures (generated at high resolution) ---------------- */
 function canvasTex(size, draw, { repeat = 1, srgb = true } = {}){
-  const c = document.createElement('canvas'), px = MOBILE ? Math.min(size, LITEG || LITEH ? 512 : 768) : size; c.width = c.height = px; const g0 = c.getContext('2d'); if (px !== size) g0.scale(px/size, px/size); // phones: same drawing at a lighter resolution
+  const c = document.createElement('canvas'), px = MOBILE ? Math.min(size, LITEG || LITEP ? 512 : 768) : size; c.width = c.height = px; const g0 = c.getContext('2d'); if (px !== size) g0.scale(px/size, px/size); // phones: same drawing at a lighter resolution
   // iPhones cap the total memory of all canvases on a page; scratch canvases used while drawing are emptied right away
   const made = [], ce = document.createElement; document.createElement = function(t, o){ const e = ce.call(document, t, o); if (String(t).toLowerCase() === 'canvas') made.push(e); return e; };
   try { draw(g0, size); } finally { document.createElement = ce; }
@@ -4086,6 +4088,7 @@ const PLACES = [
 await __yield();
 /* ---------------- me & input ---------------- */
 const ARRIVE = (() => { try { const u = new URL(location.href); return { from: u.searchParams.get('from'), place: u.searchParams.get('place') }; } catch(_) { return {}; } })();
+try { const u = new URL(location.href); if (u.searchParams.has('from') || u.searchParams.has('place')){ u.searchParams.delete('from'); u.searchParams.delete('place'); history.replaceState(null, '', u.toString().replace(/=(&|$)/g, '$1')); } } catch(_) {}
 const spawn = PAGE === 'cafe' ? { x: CAFE.x + rnd(-1.5, 1.5), z: CAFE.z - CAFE.R + 4.5, ry: 0, cy: Math.PI }      // just inside the café door
   : PAGE === 'hall' ? { x: HALL.x, z: HALL.z - HALL.r + 15, ry: 0, cy: Math.PI }
   : PAGE === 'mini' ? { x: rnd(-1.5, 1.5), z: 60, ry: Math.PI, cy: 0 }
@@ -4096,7 +4099,7 @@ const spawn = PAGE === 'cafe' ? { x: CAFE.x + rnd(-1.5, 1.5), z: CAFE.z - CAFE.R
 // each place is its own site: tapping the café / live hall (or leaving them) shows a link to that site
 let leavingPage = false;
 const SITE = { cafe: ['소링카페', '카페 안으로 들어가요.', () => CONFIG.CAFE_URL], hall: ['라이브홀', '라이브 방송이 열리는 홀로 들어가요.', () => CONFIG.HALL_URL], lounge: ['밤의 타로 라운지', '정원·소원연못·달의 전당이 있는 라운지예요.', () => CONFIG.LOUNGE_URL] };
-function siteUrl(kind){ try { const u = new URL(SITE[kind][2](), location.href), cur = new URL(location.href).searchParams; for (const k of ['host', 'full']) if (cur.has(k)) u.searchParams.set(k, ''); return u.toString().replace(/=(&|$)/g, '$1'); } catch(_) { return SITE[kind][2](); } }
+function siteUrl(kind){ try { const u = new URL(SITE[kind][2](), location.href), cur = new URL(location.href).searchParams; for (const k of ['host', 'full']) if (cur.has(k)) u.searchParams.set(k, ''); if (kind === 'lounge' && (PAGE === 'cafe' || PAGE === 'hall')) u.searchParams.set('from', PAGE); return u.toString().replace(/=(&|$)/g, '$1'); } catch(_) { return SITE[kind][2](); } }
 let linkShownAt = 0;
 let soloT = 0;
 function soloNote(kind){ const n = $('soloNote'); n.querySelector('b').textContent = (kind === 'hall' ? '라이브홀' : '소링카페') + ' 방문은 운영자가 공유한 링크로 방문해 주세요'; n.hidden = false; n.style.animation = 'none'; void n.offsetWidth; n.style.animation = ''; clearTimeout(soloT); soloT = setTimeout(() => n.hidden = true, 5000); }
@@ -5486,7 +5489,7 @@ $('lookName').textContent = lookName(profile.color);
 $('introForm').addEventListener('submit', e => {
   e.preventDefault();
   me = new Person(myId, { ...profile, x: spawn.x, z: spawn.z, ry: spawn.ry }, true); people.set(myId, me);
-  camYaw = spawn.cy; camPitch = .3; camDist = 11; camFocus.set(spawn.x, 1.2, spawn.z);
+  camYaw = spawn.cy; camPitch = .3; camDist = 11; camFocus.set(spawn.x, me.mesh.position.y + 1.2, spawn.z);
   $('intro').hidden = true; $('emotes').hidden = false; $('hint').hidden = false; canvas.focus();
   setHud(); startNet(); if (AU.on) auInit(); updateSoundBtn();
   if (PAGE === 'hall') enterHall();
@@ -5694,7 +5697,7 @@ const v3 = new THREE.Vector3();
 let introT = 0;
 // phone live hall: nearest FULL cats keep every detail, the rest become two shared simple shapes (2 draw calls for all of them)
 const HALL_FULL = 25, HALL_TAGS = 10, HALL_TAG_D = 16;
-const hallImp = LITEH ? (() => {
+const hallImp = LITEP ? (() => {
   const body = new THREE.InstancedMesh(new THREE.SphereGeometry(.42, 10, 8), new THREE.MeshStandardMaterial({ roughness: .8 }), 100);
   const head = new THREE.InstancedMesh(new THREE.SphereGeometry(.3, 10, 8), new THREE.MeshStandardMaterial({ roughness: .8 }), 100);
   for (const m of [body, head]){ m.count = 0; m.frustumCulled = false; m.castShadow = m.receiveShadow = false; scene.add(m); }
@@ -5703,7 +5706,8 @@ function hallLod(){
   const others = [...people.values()].filter(p => !p.isMe), sid = live.state && live.state.seated && live.state.seated.id;
   others.sort((a, b) => a.mesh.position.distanceToSquared(camFocus) - b.mesh.position.distanceToSquared(camFocus));
   const lite = []; let full = 0, tags = 0;
-  for (const p of others){ const placed = p.placed !== false, vip = p.boss || p.id === sid;
+  for (const p of others){ let placed = p.placed !== false; const vip = p.boss || p.id === sid;
+    if (PAGE === 'cafe' && Math.hypot(p.mesh.position.x - CAFE.x, p.mesh.position.z - CAFE.z) > CAFE.R + 4) placed = false;   // outside the café walls: not drawn at all
     if (placed && (vip || full < HALL_FULL)){ p.mesh.visible = true; if (!vip) full++; } else { p.mesh.visible = false; if (placed) lite.push(p); }
     const near = p.mesh.position.distanceTo(camFocus) < HALL_TAG_D;
     p.tagOk = vip || (p.mesh.visible && near && tags < HALL_TAGS); if (p.tagOk && !vip) tags++; }
@@ -5741,8 +5745,8 @@ function frame(){ window.__lastFrame = performance.now();
   updatePrecip(dt, t, camFocus); perfFrame(t); lightPoolFrame(t, dt);
   if (!window.__tlNoRender){ if (Q.bloom) composer.render(dt); else renderer.render(scene, camera); }
 
-  if (LITEH && t - (window.__lodT || 0) > .5){ window.__lodT = t; hallLod(); }
-  if (LITEH) hallImpFrame();
+  if (LITEP && t - (window.__lodT || 0) > .5){ window.__lodT = t; hallLod(); }
+  if (LITEP) hallImpFrame();
   else if (t - (window.__lodT || 0) > .5){ window.__lodT = t; const others = [...people.values()].filter(p => !p.isMe);
     if (others.length > 40){ others.sort((a, b) => a.mesh.position.distanceToSquared(camFocus) - b.mesh.position.distanceToSquared(camFocus)); others.forEach((p, i) => { p.mesh.visible = p.placed !== false && (i < 40 || p.boss); }); } else others.forEach(p => { p.mesh.visible = p.placed !== false; });
     if (PAGE === 'garden') for (const p of others) if (Math.hypot(p.mesh.position.x - CAFE.x, p.mesh.position.z - CAFE.z) < CAFE.R - .5) p.mesh.visible = false;
@@ -5751,7 +5755,7 @@ function frame(){ window.__lastFrame = performance.now();
   const w = innerWidth, h = innerHeight;
   for (const p of people.values()){
     v3.copy(p.mesh.position); v3.y += p.boss ? 2.75 : 2.0; v3.project(camera);
-    const vis = p.mesh.visible && (!LITEH || p.tagOk !== false) && v3.z < 1 && Math.abs(v3.x) < 1.2 && Math.abs(v3.y) < 1.2;
+    const vis = p.mesh.visible && (!LITEP || p.tagOk !== false) && v3.z < 1 && Math.abs(v3.x) < 1.2 && Math.abs(v3.y) < 1.2;
     p.tag.style.display = vis ? '' : 'none';
     if (vis) p.tag.style.transform = `translate(${(v3.x*.5+.5)*w}px,${(-v3.y*.5+.5)*h}px) translate(-50%,-100%)`;
     if (!p.bub.hidden){
