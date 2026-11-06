@@ -481,7 +481,9 @@ const SUPA_LIB = (() => { const p = import('https://cdn.jsdelivr.net/npm/@supaba
 const $ = id => document.getElementById(id);
 // this file is built three times: index.html (정원·연못·기차역·달의 전당), cafe.html (소링 카페), hall.html (라이브 홀)
 const PAGE = 'garden';
-const GARDENISH = PAGE === 'garden' || PAGE === 'mini';   // mini.html: card garden + wish pond + sacred tree + moon temple only (test build)
+const GARDENISH = PAGE === 'garden' || PAGE === 'mini';
+const ALL = PAGE === 'pc';
+const SOLO = '1' === '1';   // stand-alone build: lounge, café and hall are separate sites with no links between them   // PC build: the whole world on one page — café and live hall are a walk away, no page change   // mini.html: card garden + wish pond + sacred tree + moon temple only (test build)
 // loading: build the world in slices so the page stays responsive, and show progress on the enter button
 const effects = [];
 const __load = { n: 0, total: 39 };
@@ -4041,16 +4043,21 @@ const PLACES = [
 {
   const grid = $('placesGrid');
   const SHOW = PAGE === 'cafe' ? ['타로 라운지', '라이브홀'] : PAGE === 'hall' ? ['타로 라운지', '소링카페']
+    : ALL ? ['입구', '소원연못', '신성한 나무', '달의 전당', '달의 계단', '기차역', '카드정원', '1:1 상담소', '소링카페', '라이브홀']
     : PAGE === 'mini' ? ['소원연못', '신성한 나무', '달의 전당', '달의 계단', '카드정원'] : ['소원연못', '신성한 나무', '달의 전당', '달의 계단', '기차역', '1:1 상담소', '소링카페', '라이브홀'];
+  if (SOLO) for (let i = SHOW.length - 1; i >= 0; i--) if (['타로 라운지', '소링카페', '라이브홀'].includes(SHOW[i])) SHOW.splice(i, 1);
+  if (!SHOW.length) $('placesBtn').hidden = true;
   for (const name of SHOW){ const [, x, z, lx, lz] = PLACES.find(P => P[0] === name) || [name];
     const b = document.createElement('button'); b.type = 'button';
     const [main, sub] = name.split('\n'); const t = document.createElement('b'); t.style.fontWeight = '400'; t.textContent = main; b.append(t); if (sub){ const sp = document.createElement('span'); sp.textContent = sub; b.append(sp); }
     const pi = PLACES.findIndex(P => P[0] === name);
     b.addEventListener('click', () => { $('placesSheet').hidden = true; if (!me) return;
       if (name === '타로 라운지'){ openLink('lounge'); return; }
+      if (ALL && name === '소링카페'){ if (live.inHall) leaveHall(); me.setTarget(CAFE.x + rnd(-1.5, 1.5), CAFE.z - CAFE.R + 4.5, true); me.mesh.rotation.y = 0; camFocus.set(CAFE.x, 1.2, CAFE.z - CAFE.R + 4.5); camYaw = Math.PI; camPitch = .22; net.send('move', { x: me.mesh.position.x, z: me.mesh.position.z, tp: 1 }); hideHint(); return; }
+      if (ALL && name === '라이브홀'){ if (!live.inHall) enterHall(); return; }
       if (name === '소링카페'){ if (PAGE !== 'cafe') openLink('cafe'); else { me.setTarget(x, z + 4, true); } return; }
       if (name === '라이브홀'){ if (PAGE !== 'hall') openLink('hall'); return; }
-      if (!GARDENISH){ openLink('lounge'); return; }
+      if (!GARDENISH && !ALL){ openLink('lounge'); return; }
       if (live.inHall) leaveHall(); me.setTarget(x, z, true); camFocus.set(x, 1.2, z); if (lx !== undefined){ camYaw = Math.atan2(x - lx, z - lz); me.mesh.rotation.y = Math.atan2(lx - x, lz - z); camPitch = .28; } net.send('move', { x, z, tp: 1 }); hideHint(); });
     grid.append(b);
   }
@@ -4071,7 +4078,7 @@ let leavingPage = false;
 const SITE = { cafe: ['소링카페', '카페 안으로 들어가요.', () => CONFIG.CAFE_URL], hall: ['라이브홀', '라이브 방송이 열리는 홀로 들어가요.', () => CONFIG.HALL_URL], lounge: ['밤의 타로 라운지', '정원·소원연못·달의 전당이 있는 라운지예요.', () => CONFIG.LOUNGE_URL] };
 function siteUrl(kind){ try { const u = new URL(SITE[kind][2](), location.href), cur = new URL(location.href).searchParams; for (const k of ['host', 'full']) if (cur.has(k)) u.searchParams.set(k, ''); return u.toString().replace(/=(&|$)/g, '$1'); } catch(_) { return SITE[kind][2](); } }
 let linkShownAt = 0;
-function openLink(kind){ if (!SITE[kind]) return; linkShownAt = Date.now(); $('linkTitle').textContent = SITE[kind][0]; $('linkText').textContent = SITE[kind][1]; const a = $('linkGo'); a.href = siteUrl(kind); a.removeAttribute('target'); a.textContent = '이동하기'; $('linkUrl').textContent = a.href; openSheet('linkSheet'); }
+function openLink(kind){ if (SOLO || !SITE[kind]) return; linkShownAt = Date.now(); $('linkTitle').textContent = SITE[kind][0]; $('linkText').textContent = SITE[kind][1]; const a = $('linkGo'); a.href = siteUrl(kind); a.removeAttribute('target'); a.textContent = '이동하기'; $('linkUrl').textContent = a.href; openSheet('linkSheet'); }
 // after opening another site in a new tab, this tab lets go of its graphics, sound and connection so the phone has room for the new one
 function sleepTab(){ if (window.__asleep) return; window.__asleep = window.__leaving = true;
   try { if (net.sb) net.sb.removeAllChannels(); } catch(_) {}
@@ -4127,7 +4134,7 @@ function tap(cx, cy){
     if (kind === 'exit'){ openSheet('exitSheet'); return; }
     if (kind === 'machine'){ takeItem(hp.object.userData.item); return; }
     if (kind === 'candle'){ tapCandle(hp.object.userData.cid); return; }
-    if (kind === 'consult') openSheet('consultSheet'); else if (kind === 'basket') pickGem(); else if (kind === 'moonhall') openLink('hall'); else if (kind === 'cafelink') openLink('cafe'); else drawCard();
+    if (kind === 'consult') openSheet('consultSheet'); else if (kind === 'basket') pickGem(); else if (kind === 'moonhall'){ if (ALL) openHallSheet(); else openLink('hall'); } else if (kind === 'cafelink') openLink('cafe'); else drawCard();
     return;
   }
   if (!hw) return;
@@ -4736,7 +4743,7 @@ function makeSparks(list){
   g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); g.setAttribute('tint', new THREE.Float32BufferAttribute(c, 3)); g.setAttribute('psize', new THREE.Float32BufferAttribute(s, 1)); g.setAttribute('phase', new THREE.Float32BufferAttribute(ph, 1));
   const pts = new THREE.Points(g, sparkMat); pts.frustumCulled = false; return pts;
 }
-if (PAGE === 'hall') {
+if (PAGE === 'hall' || ALL) {
   const H = hallGroup, cx = HALL.x, cz = HALL.z, R = HALL.r, sp = [];
   { // the owner's aurora sky wrapped around the hall (mirrored so it tiles with no seam); the aurora ripples and glows, stars twinkle in front
     const skyT = new THREE.TextureLoader().load('assets/3a10b522bf07.webp'); skyT.colorSpace = THREE.SRGBColorSpace; skyT.wrapS = THREE.RepeatWrapping; skyT.anisotropy = ANISO;
@@ -4999,8 +5006,8 @@ if (PAGE === 'hall') {
   spots.forEach(([x, y, z, w, h], i) => { o.position.set(x, y, z); o.rotation.set(0, 0, 0); o.scale.setScalar(1); o.updateMatrix(); cl.setMatrixAt(i, o.matrix); const t = Math.floor(Math.random()*4); rect.set([(t % 2)*.5, t < 2 ? .5 : 0, .5, .5], i*4); size.set([w*(Math.random() < .5 ? -1 : 1), h], i*2); });
   cl.frustumCulled = false; cl.renderOrder = 2; // clouds removed at the owner's request: the hall now floats in open space
 }
-const hallLights = PAGE !== 'hall' ? [] : [[0xffe0c0, HALL.x, 9, HALL.z - 6, 70, 40], [0xc8b0ff, HALL.x, 14, HALL.z + 6, 50, 40]].map(([c, x, y, z, i, d]) => { const l = new THREE.PointLight(c, i, d, 2); l.position.set(x, y, z); hallGroup.add(l); return l; });
-const livePouches = PAGE !== 'hall' ? [] : [makePouch(HS.x + 15, 0, HS.z - 9, 'livepouch', hallGroup), makePouch(HS.x - 15, 0, HS.z - 9, 'livepouch', hallGroup)], livePouch = livePouches[0];
+const hallLights = PAGE !== 'hall' && !ALL ? [] : [[0xffe0c0, HALL.x, 9, HALL.z - 6, 70, 40], [0xc8b0ff, HALL.x, 14, HALL.z + 6, 50, 40]].map(([c, x, y, z, i, d]) => { const l = new THREE.PointLight(c, i, d, 2); l.position.set(x, y, z); hallGroup.add(l); return l; });
+const livePouches = PAGE !== 'hall' && !ALL ? [] : [makePouch(HS.x + 15, 0, HS.z - 9, 'livepouch', hallGroup), makePouch(HS.x - 15, 0, HS.z - 9, 'livepouch', hallGroup)], livePouch = livePouches[0];
 const nearPouch = p => !livePouches.length ? pouch : livePouches.reduce((a, b) => p.mesh.position.distanceTo(b.g.position) < p.mesh.position.distanceTo(a.g.position) ? b : a);
 
 await __yield();
@@ -5126,7 +5133,7 @@ function hostNext(){
   }
 }
 // whoever leaves the hall (or the game) drops out of the list after a short grace
-setInterval(() => { if (!live.isHost || PAGE !== 'hall' || !net.live || net.topic !== 'live-hall' || !roomSettled) return; const st = live.state, now = Date.now(); let ch = false;
+setInterval(() => { if (!live.isHost || (PAGE !== 'hall' && !ALL) || !net.live || net.topic !== 'live-hall' || !roomSettled) return; const st = live.state, now = Date.now(); let ch = false;
   live.gone = live.gone || {};
   for (const q of st.queue){ if (inHallNow(q.id)){ delete live.gone[q.id]; continue; } live.gone[q.id] = live.gone[q.id] || now; if (now - live.gone[q.id] > 20000){ q._drop = true; ch = true; } }
   if (ch){ st.queue = st.queue.filter(q => !q._drop); hostSave(); } }, 5000);
@@ -5262,7 +5269,7 @@ function hallCount(){ return net.topic === 'live-hall' ? people.size : 0; }
 async function enterHall(){
   $('hallSheet').hidden = true; if (!me) return;
   if (PAGE === 'mini'){ toast('달의 전당', ' 이 테스트 공간에는 라이브홀이 없어요.'); return; }
-  if (PAGE !== 'hall'){ openLink('hall'); return; }
+  if (PAGE !== 'hall' && !ALL){ openLink('hall'); return; }
   live.inHall = true; live.prevRoom = net.room || 1; live.topUntil = Date.now() + 5000; setTimeout(() => { if (live.inHall) renderLive(); }, 5100);
   me.setTarget(HALL.x + rnd(-1, 1), HALL.z - HALL.r + 15, true); me.mesh.rotation.y = 0; camFocus.set(me.mesh.position.x, 1.2, me.mesh.position.z); camYaw = Math.PI; camPitch = .2; camDist = 9;
   if (net.sb) await joinTopic('live-hall');
@@ -5438,6 +5445,7 @@ $('introForm').addEventListener('submit', e => {
   $('intro').hidden = true; $('emotes').hidden = false; $('hint').hidden = false; canvas.focus();
   setHud(); startNet(); if (AU.on) auInit(); updateSoundBtn();
   if (PAGE === 'hall') enterHall();
+  if (ALL && MOBILE) toast('소링타로', ' 여기는 PC 버전이에요. 휴대폰에서는 화면이 멈출 수 있어요. 모바일 버전 링크를 이용해 주세요.', 9000);
 });
 $('ownerTry').hidden = !!CONFIG.SUPABASE_URL;
 if (!CONFIG.SUPABASE_URL) $('introNote').textContent = '지금은 혼자 둘러보는 미리보기예요. 서버를 연결하면 링크로 들어온 사람들이 함께 보여요.';
@@ -5462,7 +5470,7 @@ function freePruned(rm){
     for (const k in g.attributes){ const a = g.attributes[k]; if (a.isInterleavedBufferAttribute || !a.array) continue; freed += a.array.byteLength; a.array = new a.array.constructor(a.itemSize); a.count = 1; }
     if (g.index){ freed += g.index.array.byteLength; g.index.array = new g.index.array.constructor(3); g.index.count = 3; } }
   return Math.round(freed/1e6); }
-function prunePage(){ const rm = new Set(), W = new THREE.Vector3(), keep = new Set([marker, sun, sun.target, ground]);
+function prunePage(){ if (ALL) return 0; const rm = new Set(), W = new THREE.Vector3(), keep = new Set([marker, sun, sun.target, ground]);
   const bounds = o => { const box = new THREE.Box3(); o.updateWorldMatrix(true, true); o.traverse(c => { if (!c.geometry && !c.isSprite) return; let sp = null;
       if (c.isInstancedMesh){ if (!c.boundingSphere) c.computeBoundingSphere(); sp = c.boundingSphere; } else if (c.geometry){ if (!c.geometry.boundingSphere) c.geometry.computeBoundingSphere(); sp = c.geometry.boundingSphere; }
       if (c.isSprite){ W.setFromMatrixPosition(c.matrixWorld); box.expandByPoint(W); return; }
@@ -5497,12 +5505,12 @@ function prunePage(){ const rm = new Set(), W = new THREE.Vector3(), keep = new 
   return rm.size;
 }
 const PRUNED = prunePage();
-if (PAGE === 'garden'){
+if (PAGE === 'garden' || ALL){
   try { scene.remove(hallSign.sp); } catch(_) {}
-  const cl = labelSprite('소링카페', 4.2); cl.position.set(CAFE.x, 17.5, CAFE.z - CAFE.R + 2); scene.add(cl);
-  const hl = labelSprite('라이브홀', 3.6); hl.position.set(PLAT.x, PLAT.y + 5.2, PLAT.z + 8.6); scene.add(hl);
+  if (!SOLO){ const cl = labelSprite('소링카페', 4.2); cl.position.set(CAFE.x, 17.5, CAFE.z - CAFE.R + 2); scene.add(cl);
+  const hl = labelSprite('라이브홀', 3.6); hl.position.set(PLAT.x, PLAT.y + 5.2, PLAT.z + 8.6); scene.add(hl); }
   // an invisible tap target over the whole café building
-  const hit = new THREE.Mesh(new THREE.CylinderGeometry(CAFE.R + .6, CAFE.R + .6, 16, 24), new THREE.MeshBasicMaterial({ visible: false })); hit.position.set(CAFE.x, 8, CAFE.z); hit.userData.pick = 'cafelink'; scene.add(hit); pickables.push(hit);
+  const hit = new THREE.Mesh(new THREE.CylinderGeometry(CAFE.R + .6, CAFE.R + .6, 16, 24), new THREE.MeshBasicMaterial({ visible: false })); if (!ALL && !SOLO){ hit.position.set(CAFE.x, 8, CAFE.z); hit.userData.pick = 'cafelink'; scene.add(hit); pickables.push(hit); }
 }
 const LITE0 = false;   // phone-light scene: off in this step
 const LP = { pool: [], src: [], t: 0 };
