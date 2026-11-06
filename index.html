@@ -487,7 +487,7 @@ const effects = [];
 const __load = { n: 0, total: 39 };
 const __yield = () => { __load.n++; (__load.t || (__load.t = [])).push(performance.now()); const b = document.getElementById('goBtn'), bar = document.getElementById('loadBar'); if (bar) bar.style.width = Math.min(96, Math.round(__load.n/__load.total*100)) + '%'; if (b && !b.dataset.ready) b.querySelector('span').textContent = '준비 중 ' + Math.min(96, Math.round(__load.n/__load.total*100)) + '%'; return new Promise(r => setTimeout(r, 0)); };
 const store = { get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}} };
-const kst = () => { const d = new Date(Date.now() + 9*3600e3); return { hour: d.getUTCHours() + d.getUTCMinutes()/60, month: d.getUTCMonth() + 1, date: d.toISOString().slice(0,10) }; };
+const kst = (dd = 0) => { const d = new Date(Date.now() + 9*3600e3 + dd*864e5); return { hour: d.getUTCHours() + d.getUTCMinutes()/60, month: d.getUTCMonth() + 1, date: d.toISOString().slice(0,10) }; };
 const today = kst().date;
 for (const a of [$('kakaoTop'), $('kakaoSheet')]) a.href = CONFIG.KAKAO_URL;
 
@@ -5036,6 +5036,24 @@ function sanitizeState(p){
   return st;
 }
 await __yield();
+/* ---- one consult a day ---- */
+const DONE_KEY = 'tl3-done';
+const kday = () => kst().date;
+live.done = new Set(); live.doneMe = '';
+function doneLocal(){ const d = store.get(DONE_KEY); return d && d.day === kday() ? d.ids : []; }
+async function doneLoad(){ // owner: who has already had a consult today
+  const day = kday(); live.done = new Set(doneLocal()); live.doneDay = day;
+  try { const r = await net.sb.from('consult_done').select('uid').eq('day', day); if (r && r.error) throw r.error; for (const x of (r && r.data) || []) live.done.add(x.uid);
+    net.sb.from('consult_done').delete().lt('day', kst(-8).date).then(() => {}, () => {}); } catch(e) { live.doneErr = true; } }
+function doneMark(uid){
+  const day = kday(); if (live.doneDay !== day){ live.done = new Set(); live.doneDay = day; }
+  live.done.add(uid); store.set(DONE_KEY, { day, ids: [...live.done] });
+  try { net.sb.from('consult_done').upsert({ day, uid }, { onConflict: 'day,uid', ignoreDuplicates: true }).then(r => { if (r && r.error && !live.doneWarned){ live.doneWarned = true; toast('소링타로', ' 오늘 상담 기록을 서버에 저장하지 못했어요 (이 기기에는 저장됐어요). Supabase 표 설정을 확인해 주세요.', 8000); } }, () => {}); } catch(_) {} }
+async function doneCheckMe(){ // visitor: have I already had a consult today?
+  if (live.doneMe === kday()) return true;
+  try { const r = await net.sb.from('consult_done').select('uid').eq('day', kday()).eq('uid', myUid()).limit(1); if (r && r.data && r.data.length){ live.doneMe = kday(); return true; } } catch(_) {}
+  return false; }
+const DONE_MSG = '오늘은 이미 상담을 받으셨어요. 상담은 하루에 한 번만 신청할 수 있어요. 내일 다시 신청해 주세요.';
 /* ---- connecting ---- */
 function liveConnect(){
   live.isHost = !!net.isOwner;
@@ -5043,13 +5061,14 @@ function liveConnect(){
   live.hostCh.on('broadcast', { event: 'state' }, ({ payload }) => { if (live.isHost) return; const st = sanitizeState(payload); if (!st || st.v < live.state.v - 1000) return; live.skew = st.at - Date.now(); applyState(st); });
   live.hostCh.on('broadcast', { event: 'pchat' }, ({ payload }) => { if (live.isHost || wasSeated || !live.inHall || !live.state.pubChat) return; const text = cleanText(payload && payload.text, 500); if (!text) return; live.chat.push({ from: payload.from === 'host' ? 'host' : 'guest', text }); renderChat(); });
   live.hostCh.on('broadcast', { event: 'prtc' }, ({ payload }) => { if (live.isHost || !payload || (payload.to !== '*' && payload.to !== myUid())) return; pubSignal(payload); });
+  live.hostCh.on('broadcast', { event: 'deny' }, ({ payload }) => { if (live.isHost || !payload || payload.to !== myUid()) return; if (payload.why === 'done') live.doneMe = kday(); if (Date.now() - (live.denyAt || 0) < 3000) return; live.denyAt = Date.now(); toast('상담 신청', ' ' + DONE_MSG, 9000); });
   live.hostCh.on('broadcast', { event: 'mega' }, ({ payload }) => { if (live.isHost || !payload) return; const text = cleanText(payload.text, 140); if (text) megaShow(text); });
   live.hostCh.on('broadcast', { event: 'say' }, ({ payload }) => { if (live.isHost || !payload || payload.topic !== net.topic) return; const text = cleanText(payload.text, 140); if (text) sayShow(text); });
   live.hostCh.subscribe(s => { if (s === 'SUBSCRIBED'){ if (live.isHost) hostBroadcast(); else liveRequest({ t: 'hello' }); } });
   live.reqCh = net.sb.channel('live-req', { config: { private: true, broadcast: { self: false } } });
   if (live.isHost) live.reqCh.on('broadcast', { event: 'req' }, ({ payload }) => hostHandle(payload));
   live.reqCh.subscribe(() => {});
-  if (live.isHost){ const saved = liveDefault(); saved.hostPid = myId; live.state = saved; refreshBoss(); if (me && store.get('tl3-fly')) { me.setFly(true); updateFlyBtn(); } setInterval(() => { if (live.state.open) hostBroadcast(); }, 4000); }
+  if (live.isHost){ const saved = liveDefault(); saved.hostPid = myId; live.state = saved; refreshBoss(); doneLoad(); if (me && store.get('tl3-fly')) { me.setFly(true); updateFlyBtn(); } setInterval(() => { if (live.state.open) hostBroadcast(); }, 4000); }
   renderLive();
 }
 function liveRequest(p){
@@ -5078,6 +5097,8 @@ function hostHandle(p){
   if (p.t === 'prtc'){ hostListenerSignal(uid, p); return; }
   if (p.t === 'apply'){
     if (!st.open || st.mode !== 'consult' || st.queue.some(q => q.id === uid) || (st.seated && st.seated.id === uid)) return;
+    if (live.doneDay !== kday()){ live.done = new Set(doneLocal()); live.doneDay = kday(); }
+    if (live.done.has(uid)){ if (live.hostCh) live.hostCh.send({ type: 'broadcast', event: 'deny', payload: { to: uid, why: 'done' } }).catch(() => {}); return; }
     if (st.queue.length >= st.maxQueue) return;
     const type = Math.max(0, Math.min(st.types.length - 1, Number(p.type) || 0));
     st.lastNo = (st.lastNo || 0) + 1; st.queue.push({ id: uid, nick: cleanText(p.nick, 12) || '손님', type, status: 'paid', no: st.lastNo });
@@ -5099,7 +5120,7 @@ function hostNext(){
     if (i < 0){ toast('상담', ' 대기 중인 신청자가 없어요.'); hostSave(); return; }
     const q = st.queue[i];
     if (net.live && net.topic === 'live-hall' && !inHallNow(q.id)){ st.queue.splice(i, 1); toast(q.nick || '손님', `님이 방에 없습니다. 다음 순서로 넘어가요.`); continue; }
-    st.queue.splice(i, 1); st.seated = { id: q.id, nick: q.nick, type: q.type }; live.chat = [];
+    st.queue.splice(i, 1); st.seated = { id: q.id, nick: q.nick, type: q.type }; live.chat = []; doneMark(q.id);
     if (me && live.inHall && me.seat !== HOST_SEAT){ me.setTarget(HS.x - 3.4, HS.z, true); me.sitAt(HOST_SEAT); net.send('sit', { seat: HOST_SEAT }); net.retrack(); }
     hostSave(); openConsult(q.id); return;
   }
@@ -5223,7 +5244,7 @@ function applyState(st){
   if (!live.isHost && st.hostPid !== (live.state && live.state.hostPid)){ live.state.hostPid = st.hostPid; refreshBoss(); }
   live.state = st;
   const seatedMe = !!(st.seated && st.seated.id === myUid() && !live.isHost), was = wasSeated; wasSeated = seatedMe;
-  if (seatedMe && !was){ openConsult(myUid()); if (live.inHall && me){ me.setTarget(HS.x + 3, HS.z - 1.5, true); me.sitAt(GUEST_SEAT); net.send('sit', { seat: GUEST_SEAT }); net.retrack(); } toast('상담', st.pubChat || st.pubVoice ? ' 차례가 됐어요. 앞 의자에 앉았어요. 이번 상담은 홀에 공개돼요.' : ' 차례가 됐어요. 앞 의자에 앉았어요. 상담 내용은 나에게만 보이고 들려요 (비공개).'); renderChat(); }
+  if (seatedMe && !was){ live.doneMe = kday(); openConsult(myUid()); if (live.inHall && me){ me.setTarget(HS.x + 3, HS.z - 1.5, true); me.sitAt(GUEST_SEAT); net.send('sit', { seat: GUEST_SEAT }); net.retrack(); } toast('상담', st.pubChat || st.pubVoice ? ' 차례가 됐어요. 앞 의자에 앉았어요. 이번 상담은 홀에 공개돼요.' : ' 차례가 됐어요. 앞 의자에 앉았어요. 상담 내용은 나에게만 보이고 들려요 (비공개).'); renderChat(); }
   if (!seatedMe && was && !live.isHost){ closeConsult(); if (me && me.seat === GUEST_SEAT){ me.setTarget(HS.x + 2, HS.z - 10, true); net.send('move', { x: HS.x + 2, z: HS.z - 10, tp: 1 }); } }
   if (!seatedMe && !live.isHost && (st.seated ? st.seated.id : null) !== prevSeat){ live.chat = []; renderChat(); }
   pubListen();
@@ -5262,6 +5283,8 @@ function openLiveBok(){
   if (live.isHost){ toast('소링타로', ' 방장님은 상담 신청 대신 리스트에서 상담을 진행해요.'); return; }
   const st = live.state; const list = $('lbTypes'); list.textContent = '';
   if (!st.open || st.mode !== 'consult'){ $('lbMsg').textContent = st.open ? '지금은 카드 번호 고르기 방송이에요. 상담 신청은 상담 라이브에서 받아요.' : '지금은 상담 신청을 받고 있지 않아요.'; $('lbMsg').hidden = false; $('lbStep1').hidden = true; $('lbStep2').hidden = true; openSheet('liveBokSheet'); return; }
+  if (live.doneMe === kday()){ $('lbMsg').textContent = DONE_MSG; $('lbMsg').hidden = false; $('lbStep1').hidden = true; $('lbStep2').hidden = true; $('lbCancel').hidden = true; openSheet('liveBokSheet'); return; }
+  if (!live.doneAsked && net.sb){ live.doneAsked = true; doneCheckMe().then(d => { if (d && !$('liveBokSheet').hidden) openLiveBok(); }); }
   const mine = st.queue.find(q => q.id === myUid());
   if (mine){ $('lbMsg').textContent = `이미 '${st.types[mine.type] ? st.types[mine.type].name : '상담'}'로 신청했어요. 리스트에서 순서를 확인해 주세요.`; $('lbMsg').hidden = false; $('lbStep1').hidden = true; $('lbStep2').hidden = true; $('lbCancel').hidden = false; openSheet('liveBokSheet'); return; }
   $('lbCancel').hidden = true; $('lbTitle').textContent = st.paid ? '상담신청(유료)' : '상담신청(무료)';
