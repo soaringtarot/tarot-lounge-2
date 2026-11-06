@@ -494,7 +494,7 @@ const $ = id => document.getElementById(id);
 const PAGE = 'garden';
 const GARDENISH = PAGE === 'garden' || PAGE === 'mini';
 const ALL = PAGE === 'pc';
-const SOLO = '1' === '1';   // stand-alone build: lounge, café and hall are separate sites with no links between them   // PC build: the whole world on one page — café and live hall are a walk away, no page change   // mini.html: card garden + wish pond + sacred tree + moon temple only (test build)
+const SOLO = '0' === '1';   // stand-alone build: lounge, café and hall are separate sites with no links between them   // PC build: the whole world on one page — café and live hall are a walk away, no page change   // mini.html: card garden + wish pond + sacred tree + moon temple only (test build)
 // loading: build the world in slices so the page stays responsive, and show progress on the enter button
 const effects = [];
 const __load = { n: 0, total: 39 };
@@ -693,9 +693,9 @@ const hallSign = (() => { // live status board in front of the moon temple door
     g.strokeStyle = on ? 'rgba(255,140,170,.95)' : 'rgba(240,207,138,.9)'; g.lineWidth = 6; g.stroke();
     if (on){ g.shadowColor = '#ff4d6d'; g.shadowBlur = 24; g.fillStyle = '#ff4d6d'; g.beginPath(); g.arc(110, 120, 22, 0, 7); g.fill(); g.shadowBlur = 0; }
     g.fillStyle = on ? '#ffe4ec' : '#f6dca0'; g.font = `800 ${on ? 78 : 60}px "Nanum Myeongjo", serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(on ? '라이브 방송 중입니다' : '현재 라이브 방송을 하고 있지 않습니다', on ? 545 : 512, 124, on ? 780 : 900); t.needsUpdate = true; }
+    g.fillText(on ? '현재 라이브 방송 중입니다' : '현재 라이브를 하고 있지 않습니다', on ? 545 : 512, 124, on ? 820 : 900); t.needsUpdate = true; }
   let last = false; const draw2 = on => { last = on; draw(on); };
-  document.fonts && document.fonts.load('800 60px "Nanum Myeongjo"', '현재 라이브 방송을 하고 있지 않습니다 라이브 방송 중입니다').then(() => { cur = null; draw(last); }).catch(() => {});
+  document.fonts && document.fonts.load('800 60px "Nanum Myeongjo"', '현재 라이브를 하고 있지 않습니다 현재 라이브 방송 중입니다').then(() => { cur = null; draw(last); }).catch(() => {});
   return { sp, draw: draw2 };
 })();
 function labelSprite(text, w = 2.8){
@@ -5536,8 +5536,9 @@ function prunePage(){ if (ALL) return 0; const rm = new Set(), W = new THREE.Vec
 }
 const PRUNED = prunePage();
 if (PAGE === 'garden' || ALL){
-  try { scene.remove(hallSign.sp); } catch(_) {}
-  { const cl = labelSprite('소링카페', 4.2); cl.position.set(CAFE.x, 17.5, CAFE.z - CAFE.R + 2); scene.add(cl);
+  const LINKED = PAGE === 'garden' && !SOLO;   // linked phone lounge: keeps the live status board, no name labels on the buildings
+  if (!LINKED) try { scene.remove(hallSign.sp); } catch(_) {}
+  if (!LINKED){ const cl = labelSprite('소링카페', 4.2); cl.position.set(CAFE.x, 17.5, CAFE.z - CAFE.R + 2); scene.add(cl);
   const hl = labelSprite('라이브홀', 3.6); hl.position.set(PLAT.x, PLAT.y + 5.2, PLAT.z + 8.6); scene.add(hl); }
   // an invisible tap target over the whole café building
   const hit = new THREE.Mesh(new THREE.CylinderGeometry(CAFE.R + .6, CAFE.R + .6, 16, 24), new THREE.MeshBasicMaterial({ visible: false })); if (!ALL){ hit.position.set(CAFE.x, 8, CAFE.z); hit.userData.pick = 'cafelink'; scene.add(hit); pickables.push(hit); }
