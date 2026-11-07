@@ -598,25 +598,16 @@ const cleanColor = v => (Number.isInteger(v) && v >= 0 && v < 32000) ? v : 0;
 
 /* ---------------- renderer & quality ---------------- */
 const canvas = $('world');
-// iPadOS Safari may report a desktop user agent: detect touch-capable iPads too.
-const LOW_POWER_DEVICE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
-  Math.min(innerWidth, innerHeight) < 600;
 let renderer;
-try { renderer = new THREE.WebGLRenderer({ canvas, antialias: !LOW_POWER_DEVICE, powerPreference: LOW_POWER_DEVICE ? 'default' : 'high-performance' }); }
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' }); }
 catch (e) { document.body.insertAdjacentHTML('beforeend','<div class="err">이 기기에서는 3D 화면을 열 수 없어요. 다른 브라우저나 기기로 들어와 주세요.</div>'); throw e; }
-const MOBILE = LOW_POWER_DEVICE;
+const MOBILE = Math.min(innerWidth, innerHeight) < 600 || /Android|iPhone|iPad/i.test(navigator.userAgent);
 const LITEG = MOBILE && GARDENISH;
 const LITEH = MOBILE && PAGE === 'hall';
 const LITEC = MOBILE && PAGE === 'cafe';   // phone café: same cat / name-tag thinning as the hall, sharpness 1x, smaller textures
 const LITEP = LITEH || LITEC;   // phone live hall: up to 100 cats — only the nearest are drawn in full, far ones as simple shapes, fewer name tags   // phone lounge: the biggest scene — fewer blades/leaves, smaller textures, sharpness 1x, small far things hidden sooner
 // phones can drop the GL context when memory runs short: keep it recoverable and tell the visitor instead of leaving a black screen
-function glDown(){
-  if (window.__leaving || window.__asleep) return;
-  const n = document.getElementById('glLost');
-  if (n) n.hidden = false; // Never reload automatically: keep user's place and allow explicit retry.
-  console.warn('[Soaring] WebGL context unavailable; manual reload available');
-}
+function glDown(){ if (window.__leaving) return; const n = document.getElementById('glLost'); if (!n || !n.hidden) return; n.hidden = false; setTimeout(() => { if (!window.__leaving && renderer.getContext().isContextLost()) location.reload(); }, 6000); }
 canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); glDown(); }, false);
 document.getElementById('glReload').addEventListener('click', () => location.reload());
 // the picture stopped updating for a while even though the page is open (frozen GPU / silent black screen): offer the reload button
@@ -628,19 +619,15 @@ setInterval(() => { try { if (!window.__leaving && !document.hidden && renderer.
 // leaving the page (or it going into the back/forward cache): give the graphics memory back first; coming back from that cache reloads
 addEventListener('pagehide', e => { if (e.persisted){ window.__leaving = true; try { renderer.forceContextLoss(); } catch(_) {} } });
 addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
-canvas.addEventListener('webglcontextrestored', () => {
-  const n = document.getElementById('glLost'); if (n) n.hidden = true;
-  window.__lastFrame = performance.now();
-  try { applyQuality(); } catch(e) { console.warn('[Soaring] GL restore resize', e); }
-}, false);
+canvas.addEventListener('webglcontextrestored', () => { const n = document.getElementById('glLost'); if (n) n.hidden = true; }, false);
 const QUALITY = {
   high:   { dpr: 2,    bloom: true,  mirror: .6,  shadow: 2048 },
   medium: { dpr: 1.5,  bloom: true,  mirror: .32, shadow: 1024 },
   low:    { dpr: 1,    bloom: false, mirror: 0,   shadow: 0 },
-  phone:  { dpr: .85, bloom: false, mirror: 0, shadow: 0 }   // auto on phones: keeps the glow, drops the costly reflection and shadow passes
+  phone:  { dpr: LITEG || LITEP ? 1 : 1.25, bloom: true,  mirror: 0,   shadow: 0 }   // auto on phones: keeps the glow, drops the costly reflection and shadow passes
 };
 const prefs = Object.assign({ season: 'auto', time: 'auto', weather: 'auto', quality: 'auto' }, store.get('tl3-scene') || {});
-const qualityName = () => MOBILE ? 'phone' : (prefs.quality === 'auto' ? 'high' : prefs.quality);
+const qualityName = () => prefs.quality === 'auto' ? (MOBILE ? 'phone' : 'high') : prefs.quality;
 let Q = QUALITY[qualityName()] || QUALITY.medium;
 const ANISO = Math.min(renderer.capabilities.getMaxAnisotropy(), MOBILE ? 4 : 16);
 
@@ -4121,11 +4108,9 @@ function openLink(kind){ if (SOLO){ if (GARDENISH && (kind === 'cafe' || kind ==
     if (d < (kind === 'cafe' ? 12 : PLAT.r + 6)) soloNote(kind); } return; } if (!SITE[kind]) return; linkShownAt = Date.now(); $('linkTitle').textContent = SITE[kind][0]; $('linkText').textContent = SITE[kind][1]; const a = $('linkGo'); a.href = siteUrl(kind); a.removeAttribute('target'); a.textContent = '이동하기'; $('linkUrl').textContent = a.href; openSheet('linkSheet'); }
 // after opening another site in a new tab, this tab lets go of its graphics, sound and connection so the phone has room for the new one
 function sleepTab(){ if (window.__asleep) return; window.__asleep = window.__leaving = true;
-  try { if (net.sb) { net.sb.removeAllChannels(); } } catch(_) {}
-  try { if (net.ch) net.ch = null; if (net.lobby) net.lobby = null; } catch(_) {}
+  try { if (net.sb) net.sb.removeAllChannels(); } catch(_) {}
   try { if (AU.ctx) AU.ctx.suspend(); document.querySelectorAll('audio').forEach(a => a.pause()); } catch(_) {}
-  try { composer.dispose(); } catch(_) {}
-  try { renderer.dispose(); renderer.forceContextLoss(); } catch(_) {}
+  try { renderer.forceContextLoss(); } catch(_) {}
   $('linkSheet').hidden = true; $('sleepMask').hidden = false; }
 // same tab: first let go of graphics / sound / connection, then move on, so the next site starts with the phone's memory free
 $('linkGo').addEventListener('click', e => { e.preventDefault(); const href = $('linkGo').href; sleepTab(); $('sleepMask').querySelector('b').textContent = '이동하는 중이에요'; $('sleepMask').querySelector('span').textContent = '잠시만 기다려 주세요'; $('wakeBtn').hidden = true; setTimeout(() => location.href = href, 350); });
@@ -5569,7 +5554,6 @@ function prunePage(){ if (ALL) return 0; const rm = new Set(), W = new THREE.Vec
   return rm.size;
 }
 const PRUNED = prunePage();
-console.info('[Soaring] optimized site', PAGE, { removedSceneObjects: PRUNED, releasedCpuMB: PRUNE_FREED, device: MOBILE ? 'mobile/tablet' : 'desktop', maxFps: MOBILE ? 30 : 'display' });
 if (PAGE === 'garden' || ALL){
   const LINKED = PAGE === 'garden' && !SOLO;   // linked phone lounge: keeps the live status board, no name labels on the buildings
   if (!LINKED) try { scene.remove(hallSign.sp); } catch(_) {}
@@ -5736,30 +5720,18 @@ function hallImpFrame(){ const { body, head, list, o } = hallImp; let n = 0;
     o.position.set(q.x, q.y + .45*sc, q.z); o.scale.set(sc, 1.15*sc, sc); o.rotation.set(0, 0, 0); o.updateMatrix(); body.setMatrixAt(n, o.matrix);
     o.position.set(q.x, q.y + 1.05*sc, q.z); o.scale.set(sc, sc, sc); o.updateMatrix(); head.setMatrixAt(n, o.matrix); n++; }
   body.count = head.count = n; body.instanceMatrix.needsUpdate = head.instanceMatrix.needsUpdate = true; }
-let mobileLastTick = 0;
-let mobileLastQualityLog = 0;
-function frame(now = performance.now()){
-  if (window.__asleep || window.__leaving) return;
-  // iPad/tablet/phone: render no more than 30fps; no extra scene updates on skipped ticks.
-  if (MOBILE && mobileLastTick && now - mobileLastTick < 1000 / 30 - 1){
-    requestAnimationFrame(frame); return;
-  }
-  mobileLastTick = now;
-  window.__lastFrame = now;
-  if (document.hidden){ clock.getDelta(); requestAnimationFrame(frame); return; }
+function frame(){ window.__lastFrame = performance.now();
   const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
   for (const p of people.values()) p.update(dt, t);
-  if (GARDENISH || ALL){
-    orbit.rotation.y = t*.12;
-    for (const c of orbit.children) c.position.y = Math.sin(t*.9 + c.userData.phase)*.18;
-    ball.material.emissiveIntensity = (1.3 + Math.sin(t*1.7)*.4)*Math.max(.5, cur.gl);
-  }
-  if (PAGE === 'hall' || ALL) for (const pp of livePouches){ pp.spin.rotation.y = t*.6; pp.spin.position.y = 1.0 + Math.sin(t*1.6)*.06; pp.pulse = Math.max(0, pp.pulse - dt*1.5); pp.spin.scale.setScalar(1 + pp.pulse*.12); pp.light.intensity = 8 + Math.sin(t*2.3)*3 + pp.pulse*20; }
+  orbit.rotation.y = t*.12;
+  for (const c of orbit.children) c.position.y = Math.sin(t*.9 + c.userData.phase)*.18;
+  ball.material.emissiveIntensity = (1.3 + Math.sin(t*1.7)*.4)*Math.max(.5, cur.gl);
+  for (const pp of livePouches){ pp.spin.rotation.y = t*.6; pp.spin.position.y = 1.0 + Math.sin(t*1.6)*.06; pp.pulse = Math.max(0, pp.pulse - dt*1.5); pp.spin.scale.setScalar(1 + pp.pulse*.12); pp.light.intensity = 8 + Math.sin(t*2.3)*3 + pp.pulse*20; }
   if (scene.userData.hallOrbit) scene.userData.hallOrbit.rotation.y = t*.08;
-  if (GARDENISH || ALL){ pouch.spin.rotation.y = t*.6; pouch.spin.position.y = 1.0 + Math.sin(t*1.6)*.06; pouch.pulse = Math.max(0, pouch.pulse - dt*1.5); pouch.spin.scale.setScalar(1 + pouch.pulse*.12); pouch.light.intensity = (8 + Math.sin(t*2.3)*3 + pouch.pulse*20)*Math.max(.5, cur.gl); ballLight.intensity = 12 + Math.sin(t*1.7)*4; }
-  if (GARDENISH || ALL) for (const f of floaters){ if (f.userData.pulse !== undefined) f.material.opacity = .45 + .4*Math.sin(t*2.4); else if (f.userData.lotus !== undefined) f.position.y = .12 + Math.sin(t*1.2 + f.userData.lotus)*.03; else { f.rotation.y = t*.8 + f.userData.spin; f.position.y = 1.55 + Math.sin(t*1.4 + f.userData.spin)*.08; } }
+  pouch.spin.rotation.y = t*.6; pouch.spin.position.y = 1.0 + Math.sin(t*1.6)*.06; pouch.pulse = Math.max(0, pouch.pulse - dt*1.5); pouch.spin.scale.setScalar(1 + pouch.pulse*.12); pouch.light.intensity = (8 + Math.sin(t*2.3)*3 + pouch.pulse*20)*Math.max(.5, cur.gl); ballLight.intensity = 12 + Math.sin(t*1.7)*4;
+  for (const f of floaters){ if (f.userData.pulse !== undefined) f.material.opacity = .45 + .4*Math.sin(t*2.4); else if (f.userData.lotus !== undefined) f.position.y = .12 + Math.sin(t*1.2 + f.userData.lotus)*.03; else { f.rotation.y = t*.8 + f.userData.spin; f.position.y = 1.55 + Math.sin(t*1.4 + f.userData.spin)*.08; } }
   for (let i=effects.length-1;i>=0;i--){ const e = effects[i]; e.t += dt; e.step(dt); if (e.t >= e.dur){ e.end(); effects.splice(i,1); } }
-  if (GARDENISH || ALL) for (let i=candles.length-1;i>=0;i--){ const c = candles[i]; c.f.scale.set(1 + Math.sin(t*9+c.p)*.15, 1.8 + Math.sin(t*7+c.p)*.3, 1); if (t - c.born > 600) dropCandle(i); }
+  for (let i=candles.length-1;i>=0;i--){ const c = candles[i]; c.f.scale.set(1 + Math.sin(t*9+c.p)*.15, 1.8 + Math.sin(t*7+c.p)*.3, 1); if (t - c.born > 600) dropCandle(i); }
   if (marker.material.opacity > 0) marker.material.opacity = Math.max(0, marker.material.opacity - dt*1.2);
 
   if (me){ v3.copy(me.mesh.position); v3.y += 1.2; camFocus.lerp(v3, 1 - Math.exp(-dt*6)); }
@@ -5813,7 +5785,7 @@ function prewarm(){ // one draw of the whole place, exactly the way the game dra
   { const sp = $('goBtn').querySelector('span'), bar = $('loadBar'); let k = 0;
     while (PERF.queue){ perfStep(MOBILE ? 35 : 60); if (!(k++ % 4)){ sp.textContent = '준비 중 97%'; if (bar) bar.style.width = '97%'; } await new Promise(r => setTimeout(r, 0)); }
     sp.textContent = '준비 중 99%'; if (bar) bar.style.width = '99%'; await new Promise(r => setTimeout(r, 30));
-    if (!MOBILE) try { prewarm(); } catch(_) {} await new Promise(r => setTimeout(r, 30)); }
+    try { prewarm(); } catch(_) {} await new Promise(r => setTimeout(r, 30)); }
   const b = $('goBtn'); b.dataset.ready = '1'; b.disabled = false; b.querySelector('span').textContent = '들어가기'; const bar = $('loadBar'); if (bar){ bar.style.width = '100%'; setTimeout(() => bar.parentNode.hidden = true, 400); } })();
 </script>
 </body>
